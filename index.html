@@ -49,7 +49,7 @@ p { font-size: 13px; color: var(--text-light); }
 .earn-badge { background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
 .status-chip { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: #dcfce7; color: #166534; font-weight: 600; }
 #riderMap { width: 100%; height: 300px; border-radius: 16px; margin-bottom: 16px; border: 1px solid var(--border); }
-.toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: var(--primary); color: #fff; padding: 12px 24px; border-radius: 30px; font-size: 13px; z-index: 9999; opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); max-width: 90%; text-align: center; }
+.toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: var(--primary); color: #fff; padding: 12px 24px; border-radius: 30px; font-size: 13px; z-index: 9999; opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none; max-width: 90%; text-align: center; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(-10px); }
 .empty { text-align: center; color: var(--text-light); padding: 60px 0; font-size: 14px; }
 .empty .big { font-size: 56px; display: block; margin-bottom: 16px; }
@@ -113,141 +113,87 @@ p { font-size: 13px; color: var(--text-light); }
         try { await setDoc(doc(db, "rider_locations", orderId), { location: { latitude, longitude }, accuracy, riderId: state.rider.phone, riderName: state.rider.name, orderId, updatedAt: serverTimestamp() }, { merge: true }); } catch (e) { console.error(e); }
         if (state.myMap && state.myMarker) { const pos = { lat: latitude, lng: longitude }; state.myMarker.setPosition(pos); state.myMap.panTo(pos); }
       },
-      (err) => { console.error(err); toast(err.code === 1 ? "GPS permission denied" : "GPS error"); },
+      (err) => { console.error(err); toast(err.code === 1 ? "GPS denied" : "GPS error"); },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   }
 
-  function stopLocationBroadcast() {
-    if (state.watchId !== null) { navigator.geolocation.clearWatch(state.watchId); state.watchId = null; }
-  }
+  function stopLocationBroadcast() { if (state.watchId !== null) { navigator.geolocation.clearWatch(state.watchId); state.watchId = null; } }
 
   function toggleOnline() {
     state.isOnline = !state.isOnline; saveLocal(); updateStatusBadge();
-    if (state.isOnline) { toast("You are now Online 🟢"); loadAvailableOrders(); }
-    else {
-      toast("You are now Offline 🔴");
-      if (state.watchId && !state.activeOrder) stopLocationBroadcast();
-      if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; }
-      state.availableOrders = [];
-    }
+    if (state.isOnline) { toast("Online 🟢"); loadAvailableOrders(); }
+    else { toast("Offline 🔴"); if (state.watchId && !state.activeOrder) stopLocationBroadcast(); if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; } state.availableOrders = []; }
     render();
   }
 
-  function updateStatusBadge() {
-    const badge = document.getElementById("statusBadge");
-    badge.textContent = state.isOnline ? "Online" : "Offline";
-    badge.classList.toggle("online", state.isOnline);
-  }
+  function updateStatusBadge() { const badge = document.getElementById("statusBadge"); badge.textContent = state.isOnline ? "Online" : "Offline"; badge.classList.toggle("online", state.isOnline); }
 
   function loadAvailableOrders() {
     if (state.ordersListener) return;
-    // ONLY show orders that merchant has marked "Ready for Pickup"
     const ordersQuery = query(collection(db, "orders"), where("status", "==", "Ready for Pickup"));
-
     state.ordersListener = onSnapshot(ordersQuery, (snapshot) => {
       const newOrders = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        if (state.activeOrder && data.id === state.activeOrder.id) return;
-        newOrders.push({ id: doc.id, ...data });
-      });
+      snapshot.forEach((doc) => { const data = doc.data(); if (state.activeOrder && data.id === state.activeOrder.id) return; newOrders.push({ id: doc.id, ...data }); });
       const prevCount = state.availableOrders.length;
       state.availableOrders = newOrders;
-      if (newOrders.length > prevCount && prevCount > 0 && state.rider) {
-        const diff = newOrders.length - prevCount;
-        toast(`🔔 ${diff} new order${diff > 1 ? 's' : ''} ready for pickup!`);
-      }
-      console.log("📦 Ready orders:", state.availableOrders.length);
+      if (newOrders.length > prevCount && prevCount > 0 && state.rider) { const diff = newOrders.length - prevCount; toast(`🔔 ${diff} new ready order${diff > 1 ? 's' : ''}!`); }
       updateOrderBadge();
       if (state.tab === "orders" || state.tab === "home") render();
     }, (err) => { console.warn(err); });
   }
 
-  function updateOrderBadge() {
-    const badge = document.getElementById("orderBadge");
-    const count = state.availableOrders.length;
-    if (count > 0) { badge.textContent = count; badge.classList.remove("hidden"); } else badge.classList.add("hidden");
-  }
+  function updateOrderBadge() { const badge = document.getElementById("orderBadge"); const count = state.availableOrders.length; if (count > 0) { badge.textContent = count; badge.classList.remove("hidden"); } else badge.classList.add("hidden"); }
 
   async function acceptOrder(orderId) {
-    if (!state.rider) return toast("Please login first");
-    if (state.activeOrder) return toast("Complete your current order first");
+    if (!state.rider) return toast("Login first");
+    if (state.activeOrder) return toast("Finish current order first");
     const order = state.availableOrders.find(o => o.id === orderId); if (!order) return;
     const riderEarning = 120;
     try {
-      await updateDoc(doc(db, "orders", orderId), {
-        status: "Rider Assigned",
-        rider: { name: state.rider.name, phone: state.rider.phone, bike: state.rider.bike || "Motorcycle", rating: state.rider.rating || 5.0 },
-        riderEarning, assignedAt: new Date().toISOString()
-      });
+      await updateDoc(doc(db, "orders", orderId), { status: "Rider Assigned", rider: { name: state.rider.name, phone: state.rider.phone, bike: state.rider.bike || "Motorcycle", rating: state.rider.rating || 5.0 }, riderEarning, assignedAt: new Date().toISOString() });
       state.activeOrder = { ...order, riderEarning, acceptedAt: new Date().toISOString(), status: "Rider Assigned" };
       saveLocal(); startLocationBroadcast(orderId);
-      toast("Order accepted! Navigate to store 📍");
-      state.tab = "home"; render();
+      toast("Order accepted! 📍"); state.tab = "home"; render();
     } catch (e) { console.error(e); toast("Failed to accept"); }
   }
 
   async function updateOrderStatus(newStatus) {
     if (!state.activeOrder) return;
-    try {
-      await updateDoc(doc(db, "orders", state.activeOrder.id), { status: newStatus, updatedAt: new Date().toISOString() });
-      state.activeOrder.status = newStatus; saveLocal(); toast("Status: " + newStatus); render();
-    } catch (e) { console.error(e); toast("Failed to update"); }
+    try { await updateDoc(doc(db, "orders", state.activeOrder.id), { status: newStatus, updatedAt: new Date().toISOString() }); state.activeOrder.status = newStatus; saveLocal(); toast("Status: " + newStatus); render(); }
+    catch (e) { console.error(e); toast("Failed"); }
   }
 
   async function completeDelivery() {
     if (!state.activeOrder) return;
-    if (!confirm("Confirm delivery completed?")) return;
+    if (!confirm("Confirm delivery?")) return;
     try {
       await updateDoc(doc(db, "orders", state.activeOrder.id), { status: "Delivered", deliveredAt: new Date().toISOString() });
       state.completedOrders.unshift({ ...state.activeOrder, deliveredAt: new Date().toISOString() });
-      stopLocationBroadcast();
-      state.activeOrder = null; saveLocal();
-      toast("Delivery completed! 🎉 Earned Rs 120");
-      render();
-    } catch (e) { console.error(e); toast("Failed to complete"); }
+      stopLocationBroadcast(); state.activeOrder = null; saveLocal();
+      toast("Delivered! 🎉 Earned Rs 120"); render();
+    } catch (e) { console.error(e); toast("Failed"); }
   }
 
   function renderHome() {
     const active = state.activeOrder;
-    return `
-      <div class="online-toggle">
-        <div><h3>${state.isOnline ? '🟢 You are Online' : '🔴 You are Offline'}</h3><p style="margin-top:4px;">${state.isOnline ? 'Receiving ready orders' : 'Go online to start earning'}</p></div>
-        <div class="toggle-switch ${state.isOnline?'on':''}" onclick="toggleOnline()"></div>
-      </div>
-      ${active ? `
-        <h2>Active Delivery</h2>
-        <div class="card order-card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><b>#${active.id}</b><span class="earn-badge">Rs ${active.riderEarning}</span></div>
-          <div class="order-row"><span>Pickup from:</span><span>${active.items[0]?.shopName || 'Store'}</span></div>
-          <div class="order-row"><span>Deliver to:</span><span>${active.address?.details || 'Customer'}</span></div>
-          <div class="order-row"><span>Items:</span><span>${active.items?.length || 0} items</span></div>
-          <div class="order-row"><span>Total:</span><span>Rs ${active.total}</span></div>
-          <div id="riderMap" style="margin-top:12px;"></div>
-          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
-            <button class="btn btn-dark btn-block" onclick="openGoogleMapsNav('${active.address?.details}')">🧭 Navigate</button>
-            ${active.status === 'Rider Assigned' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('Picked Up')">✅ Confirm Pickup</button>` : ''}
-            ${active.status === 'Picked Up' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('On the Way')">🛵 Mark On the Way</button>` : ''}
-            ${active.status === 'On the Way' ? `<button class="btn btn-primary btn-block" onclick="completeDelivery()">🎉 Confirm Delivery</button>` : ''}
-          </div>
-        </div>
-      ` : ''}
+    return `<div class="online-toggle"><div><h3>${state.isOnline ? '🟢 Online' : '🔴 Offline'}</h3><p style="margin-top:4px;">${state.isOnline ? 'Receiving ready orders' : 'Go online'}</p></div><div class="toggle-switch ${state.isOnline?'on':''}" onclick="toggleOnline()"></div></div>
+      ${active ? `<h2>Active Delivery</h2><div class="card order-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><b>#${active.id}</b><span class="earn-badge">Rs ${active.riderEarning}</span></div>
+        <div class="order-row"><span>Pickup:</span><span>${active.items[0]?.shopName || 'Store'}</span></div>
+        <div class="order-row"><span>Deliver to:</span><span>${active.address?.details || 'Customer'}</span></div>
+        <div class="order-row"><span>Total:</span><span>Rs ${active.total}</span></div>
+        <div id="riderMap" style="margin-top:12px;"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn btn-dark btn-block" onclick="openGoogleMapsNav('${active.address?.details}')">🧭 Navigate</button>
+          ${active.status === 'Rider Assigned' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('Picked Up')">✅ Confirm Pickup</button>` : ''}
+          ${active.status === 'Picked Up' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('On the Way')">🛵 On the Way</button>` : ''}
+          ${active.status === 'On the Way' ? `<button class="btn btn-primary btn-block" onclick="completeDelivery()">🎉 Confirm Delivery</button>` : ''}
+        </div></div>` : ''}
       <h2 style="${active ? 'margin-top:20px;' : ''}">${active ? '🔔 New Orders (' + state.availableOrders.length + ')' : 'Available Orders'}</h2>
-      ${state.availableOrders.length === 0 ? `<div class="empty"><span class="big">📭</span>${state.isOnline ? 'No orders ready yet' : 'Go online to see orders'}</div>` : state.availableOrders.map(o => `
-        <div class="card order-card" style="border-left-color:${active ? '#f59e0b' : '#22c55e'};">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b>#${o.id}</b><span class="earn-badge">Earn Rs 120</span></div>
-          <div class="order-row"><span>Pickup from:</span><span>${o.items?.[0]?.shopName || 'Store'}</span></div>
-          <div class="order-row"><span>Customer:</span><span>${o.address?.details?.slice(0,30) || 'Customer'}</span></div>
-          <div class="order-row"><span>Items:</span><span>${o.items?.length || 0}</span></div>
-          ${active ? `<div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;font-size:12px;margin-top:10px;text-align:center;">⚠️ Finish your current delivery first</div>` : `<button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="acceptOrder('${o.id}')">Accept Order</button>`}
-        </div>
-      `).join("")}`;
+      ${state.availableOrders.length === 0 ? `<div class="empty"><span class="big">📭</span>${state.isOnline ? 'No ready orders yet' : 'Go online'}</div>` : state.availableOrders.map(o => `<div class="card order-card" style="border-left-color:${active ? '#f59e0b' : '#22c55e'};"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b>#${o.id}</b><span class="earn-badge">Rs 120</span></div><div class="order-row"><span>Pickup:</span><span>${o.items?.[0]?.shopName || 'Store'}</span></div><div class="order-row"><span>Customer:</span><span>${o.address?.details?.slice(0,30) || 'Customer'}</span></div>${active ? `<div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;font-size:12px;margin-top:10px;text-align:center;">⚠️ Finish current first</div>` : `<button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="acceptOrder('${o.id}')">Accept Order</button>`}</div>`).join("")}`;
   }
 
-  function renderOrders() {
-    return `<h2>Order History</h2>${state.completedOrders.length === 0 ? '<div class="empty"><span class="big">📦</span>No completed orders yet</div>' : ''}${state.completedOrders.map(o => `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;"><b>#${o.id}</b><span class="status-chip">Delivered</span></div><p style="font-size:12px;margin-top:6px;">${new Date(o.deliveredAt).toLocaleString()}</p><div class="order-row" style="margin-top:8px;"><span>Earned:</span><span style="color:var(--rider);">Rs ${o.riderEarning}</span></div></div>`).join("")}`;
-  }
+  function renderOrders() { return `<h2>History</h2>${state.completedOrders.length === 0 ? '<div class="empty"><span class="big">📦</span>No completed orders</div>' : ''}${state.completedOrders.map(o => `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;"><b>#${o.id}</b><span class="status-chip">Delivered</span></div><p style="font-size:12px;margin-top:6px;">${new Date(o.deliveredAt).toLocaleString()}</p><div class="order-row" style="margin-top:8px;"><span>Earned:</span><span style="color:var(--rider);">Rs ${o.riderEarning}</span></div></div>`).join("")}`; }
 
   function renderEarnings() {
     const today = new Date().toDateString();
@@ -255,72 +201,39 @@ p { font-size: 13px; color: var(--text-light); }
     const weekAgo = new Date(Date.now() - 7*24*60*60*1000);
     const weekEarnings = state.completedOrders.filter(o => new Date(o.deliveredAt) > weekAgo).reduce((s, o) => s + (o.riderEarning || 0), 0);
     const totalEarnings = state.completedOrders.reduce((s, o) => s + (o.riderEarning || 0), 0);
-    return `<h2>My Earnings</h2><div class="stat-grid"><div class="stat-box"><div class="num">Rs ${todayEarnings}</div><div class="lbl">Today</div></div><div class="stat-box"><div class="num">Rs ${weekEarnings}</div><div class="lbl">This Week</div></div></div><div class="stat-box" style="margin-bottom:12px;"><div class="num">Rs ${totalEarnings}</div><div class="lbl">Total Lifetime</div></div><div class="card"><div class="order-row"><span>Completed Deliveries</span><span>${state.completedOrders.length}</span></div><div class="order-row"><span>Avg per Delivery</span><span>Rs ${state.completedOrders.length ? Math.round(totalEarnings/state.completedOrders.length) : 0}</span></div></div><button class="btn btn-primary btn-block" onclick="requestPayout()">💸 Request Payout</button>`;
+    return `<h2>Earnings</h2><div class="stat-grid"><div class="stat-box"><div class="num">Rs ${todayEarnings}</div><div class="lbl">Today</div></div><div class="stat-box"><div class="num">Rs ${weekEarnings}</div><div class="lbl">Week</div></div></div><div class="stat-box" style="margin-bottom:12px;"><div class="num">Rs ${totalEarnings}</div><div class="lbl">Total</div></div><div class="card"><div class="order-row"><span>Deliveries</span><span>${state.completedOrders.length}</span></div><div class="order-row"><span>Avg</span><span>Rs ${state.completedOrders.length ? Math.round(totalEarnings/state.completedOrders.length) : 0}</span></div></div><button class="btn btn-primary btn-block" onclick="requestPayout()">💸 Request Payout</button>`;
   }
 
-  function requestPayout() {
-    if (state.completedOrders.length === 0) return toast("No earnings to payout");
-    toast("Payout request sent to Admin ✅");
-  }
+  function requestPayout() { if (state.completedOrders.length === 0) return toast("No earnings"); toast("Payout request sent ✅"); }
 
   function renderProfile() {
-    if (!state.rider) return `<div class="card" style="text-align:center;padding:40px 20px;"><div style="font-size:64px;margin-bottom:16px;">🛵</div><h3 style="margin-bottom:8px;">SYEDGO Rider</h3><p style="color:var(--text-light);font-size:13px;margin-bottom:20px;">Login to start delivering</p><button class="btn btn-primary btn-block" onclick="openAuth()">Login / Signup</button></div>`;
-    return `<div class="card"><div style="display:flex;align-items:center;gap:16px;"><div style="width:60px;height:60px;border-radius:50%;background:var(--rider);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;">🛵</div><div><h3>${state.rider.name}</h3><p style="font-size:13px;color:var(--text-light);">${state.rider.phone}</p><p style="font-size:12px;color:var(--rider);margin-top:2px;">⭐ ${state.rider.rating || 5.0} • ${state.completedOrders.length} deliveries</p></div></div></div><div class="card"><div class="order-row" style="cursor:pointer;" onclick="editBike()"><span>🏍️ Bike</span><span>${state.rider.bike || 'Not set'} ›</span></div><div class="order-row"><span>📞 Phone</span><span>${state.rider.phone}</span></div><div class="order-row"><span>✅ Status</span><span>${state.isOnline ? 'Online' : 'Offline'}</span></div></div><button class="btn btn-danger btn-block" onclick="logout()">Logout</button>`;
+    if (!state.rider) return `<div class="card" style="text-align:center;padding:40px 20px;"><div style="font-size:64px;margin-bottom:16px;">🛵</div><h3 style="margin-bottom:8px;">SYEDGO Rider</h3><button class="btn btn-primary btn-block" onclick="openAuth()">Login</button></div>`;
+    return `<div class="card"><div style="display:flex;align-items:center;gap:16px;"><div style="width:60px;height:60px;border-radius:50%;background:var(--rider);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;">🛵</div><div><h3>${state.rider.name}</h3><p style="font-size:13px;color:var(--text-light);">${state.rider.phone}</p><p style="font-size:12px;color:var(--rider);margin-top:2px;">⭐ ${state.rider.rating || 5.0} • ${state.completedOrders.length} deliveries</p></div></div></div><div class="card"><div class="order-row" style="cursor:pointer;" onclick="editBike()"><span>🏍️ Bike</span><span>${state.rider.bike || 'Not set'} ›</span></div><div class="order-row"><span>📞 Phone</span><span>${state.rider.phone}</span></div></div><button class="btn btn-danger btn-block" onclick="logout()">Logout</button>`;
   }
 
-  function editBike() {
-    const bike = prompt("Enter your bike model:", state.rider.bike || "");
-    if (bike && bike.trim()) { state.rider.bike = bike.trim(); saveLocal(); render(); toast("Bike updated"); }
-  }
+  function editBike() { const bike = prompt("Bike model:", state.rider.bike || ""); if (bike && bike.trim()) { state.rider.bike = bike.trim(); saveLocal(); render(); toast("Updated"); } }
 
-  function openAuth() {
-    document.getElementById("modalRoot").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><h3>Rider Login</h3><div id="authStep1"><input id="rPhone" placeholder="Phone number (e.g. 03001234567)" type="tel" /><button class="btn btn-primary btn-block" onclick="checkRider()">Continue</button></div><div id="authStep2" class="hidden"><p style="text-align:center;margin-bottom:16px;">Complete your profile</p><input id="rName" placeholder="Full Name" /><input id="rBike" placeholder="Bike model (e.g. Honda 125)" /><button class="btn btn-primary btn-block" onclick="completeSignup()">Start Riding</button><button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="backToStep1()">← Change Number</button></div><button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="closeModal()">Cancel</button></div></div>`;
-    setTimeout(() => document.getElementById('rPhone')?.focus(), 100);
-  }
+  function openAuth() { document.getElementById("modalRoot").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><h3>Rider Login</h3><div id="authStep1"><input id="rPhone" placeholder="Phone (03001234567)" type="tel" /><button class="btn btn-primary btn-block" onclick="checkRider()">Continue</button></div><div id="authStep2" class="hidden"><p style="text-align:center;margin-bottom:16px;">Complete profile</p><input id="rName" placeholder="Full Name" /><input id="rBike" placeholder="Bike (Honda 125)" /><button class="btn btn-primary btn-block" onclick="completeSignup()">Start Riding</button><button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="backToStep1()">← Change</button></div><button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="closeModal()">Cancel</button></div></div>`; setTimeout(() => document.getElementById('rPhone')?.focus(), 100); }
 
   async function checkRider() {
-    const input = document.getElementById('rPhone').value.trim(); if (!input) return toast("Enter phone number");
+    const input = document.getElementById('rPhone').value.trim(); if (!input) return toast("Enter phone");
     let phone = input.replace(/[\s\-()]/g, "");
-    if (phone.startsWith("0")) phone = "+92" + phone.slice(1);
-    else if (phone.startsWith("92") && !phone.startsWith("+")) phone = "+" + phone;
-    else if (!phone.startsWith("+")) phone = "+92" + phone;
+    if (phone.startsWith("0")) phone = "+92" + phone.slice(1); else if (phone.startsWith("92") && !phone.startsWith("+")) phone = "+" + phone; else if (!phone.startsWith("+")) phone = "+92" + phone;
     window._phone = phone; toast("Checking...");
     try {
       const snap = await getDoc(doc(db, "riders", phone));
-      if (snap.exists()) {
-        state.rider = snap.data(); saveLocal(); closeModal(); render();
-        if (state.isOnline) loadAvailableOrders();
-        toast("Welcome back, " + state.rider.name + "! 🛵");
-      } else {
-        document.getElementById('authStep1').classList.add('hidden');
-        document.getElementById('authStep2').classList.remove('hidden');
-      }
+      if (snap.exists()) { state.rider = snap.data(); saveLocal(); closeModal(); render(); if (state.isOnline) loadAvailableOrders(); toast("Welcome back, " + state.rider.name + "! 🛵"); }
+      else { document.getElementById('authStep1').classList.add('hidden'); document.getElementById('authStep2').classList.remove('hidden'); }
     } catch (e) { console.error(e); toast("Network error"); }
   }
 
   function backToStep1() { document.getElementById('authStep2').classList.add('hidden'); document.getElementById('authStep1').classList.remove('hidden'); }
 
-  async function completeSignup() {
-    const name = document.getElementById('rName').value.trim();
-    const bike = document.getElementById('rBike').value.trim();
-    if (!name || !bike) return toast("Fill all fields");
-    state.rider = { name, phone: window._phone, bike, rating: 5.0, joinedAt: new Date().toISOString() };
-    try { await setDoc(doc(db, "riders", state.rider.phone), state.rider); saveLocal(); closeModal(); render(); toast("Welcome, " + name + "! 🎉"); }
-    catch (e) { console.error(e); toast("Failed to create profile"); }
-  }
+  async function completeSignup() { const name = document.getElementById('rName').value.trim(); const bike = document.getElementById('rBike').value.trim(); if (!name || !bike) return toast("Fill all"); state.rider = { name, phone: window._phone, bike, rating: 5.0, joinedAt: new Date().toISOString() }; try { await setDoc(doc(db, "riders", state.rider.phone), state.rider); saveLocal(); closeModal(); render(); toast("Welcome, " + name + "! 🎉"); } catch (e) { console.error(e); toast("Failed"); } }
 
-  function logout() {
-    if (!confirm("Logout?")) return;
-    stopLocationBroadcast();
-    if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; }
-    state.rider = null; state.isOnline = false; state.activeOrder = null; state.completedOrders = []; state.availableOrders = [];
-    localStorage.clear(); render(); toast("Logged out");
-  }
+  function logout() { if (!confirm("Logout?")) return; stopLocationBroadcast(); if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; } state.rider = null; state.isOnline = false; state.activeOrder = null; state.completedOrders = []; state.availableOrders = []; localStorage.clear(); render(); toast("Logged out"); }
 
-  function openGoogleMapsNav(address) {
-    if (!address) return toast("No address");
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
-  }
+  function openGoogleMapsNav(address) { if (!address) return toast("No address"); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank"); }
 
   function render() {
     const app = document.getElementById("app"); let html = "";
@@ -342,21 +255,14 @@ p { font-size: 13px; color: var(--text-light); }
     navigator.geolocation.getCurrentPosition((pos) => { const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }; state.myMap.setCenter(loc); state.myMarker.setPosition(loc); }, (err) => { console.warn(err); });
   }
 
-  document.querySelectorAll(".bottom-nav button").forEach(btn => {
-    btn.addEventListener("click", () => { state.tab = btn.dataset.tab; render(); window.scrollTo(0, 0); });
-  });
+  document.querySelectorAll(".bottom-nav button").forEach(btn => { btn.addEventListener("click", () => { state.tab = btn.dataset.tab; render(); window.scrollTo(0, 0); }); });
 
-  setTimeout(() => { document.getElementById('splash').style.opacity = '0'; setTimeout(() => document.getElementById('splash').remove(), 500); }, 2000);
+  setTimeout(() => { document.getElementById('splash').style.opacity = '0'; setTimeout(() => document.getElementById('splash')?.remove(), 500); }, 2000);
   updateStatusBadge(); render();
   if (state.rider && state.isOnline) loadAvailableOrders();
   if (state.activeOrder) startLocationBroadcast(state.activeOrder.id);
 
-  window.toggleOnline = toggleOnline; window.acceptOrder = acceptOrder;
-  window.updateOrderStatus = updateOrderStatus; window.completeDelivery = completeDelivery;
-  window.openGoogleMapsNav = openGoogleMapsNav; window.openAuth = openAuth;
-  window.checkRider = checkRider; window.backToStep1 = backToStep1;
-  window.completeSignup = completeSignup; window.logout = logout;
-  window.editBike = editBike; window.requestPayout = requestPayout; window.closeModal = closeModal;
+  window.toggleOnline = toggleOnline; window.acceptOrder = acceptOrder; window.updateOrderStatus = updateOrderStatus; window.completeDelivery = completeDelivery; window.openGoogleMapsNav = openGoogleMapsNav; window.openAuth = openAuth; window.checkRider = checkRider; window.backToStep1 = backToStep1; window.completeSignup = completeSignup; window.logout = logout; window.editBike = editBike; window.requestPayout = requestPayout; window.closeModal = closeModal; window.toast = toast;
 </script>
 </body>
 </html>
