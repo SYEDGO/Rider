@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#22c55e" />
+<title>SYEDGO Rider</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDLf8FDyUoWTFsiMu20azhnscWkiyCDE24"></script>
+<style>
+:root { --primary: #0f172a; --rider: #22c55e; --accent: #f59e0b; --danger: #ef4444; --bg: #f1f5f9; --card: #ffffff; --text: #0f172a; --text-light: #64748b; --border: #e2e8f0; }
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+body { background: var(--bg); display: flex; justify-content: center; min-height: 100vh; }
+.app { width: 100%; max-width: 480px; background: var(--bg); min-height: 100vh; position: relative; padding-bottom: 75px; }
+#splash { position: fixed; inset: 0; background: var(--rider); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; transition: opacity 0.5s; }
+#splash h1 { font-size: 36px; letter-spacing: 3px; margin-bottom: 10px; }
+#splash .loader { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; margin-top: 20px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: var(--primary); color: #fff; position: sticky; top: 0; z-index: 10; }
+.topbar h1 { font-size: 18px; }
+.topbar .status { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: rgba(255,255,255,0.15); }
+.topbar .status.online { background: var(--rider); }
+main { padding: 16px; }
+h2 { font-size: 18px; margin-bottom: 12px; color: var(--text); font-weight: 600; }
+h3 { font-size: 16px; color: var(--text); }
+p { font-size: 13px; color: var(--text-light); }
+.card { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.02); }
+.online-toggle { display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 16px; border-radius: 16px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+.toggle-switch { width: 60px; height: 32px; background: #cbd5e1; border-radius: 20px; position: relative; cursor: pointer; transition: background 0.3s; flex-shrink: 0; }
+.toggle-switch.on { background: var(--rider); }
+.toggle-switch::after { content: ''; position: absolute; width: 26px; height: 26px; background: #fff; border-radius: 50%; top: 3px; left: 3px; transition: left 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+.toggle-switch.on::after { left: 31px; }
+.bottom-nav { position: fixed; bottom: 0; width: 100%; max-width: 480px; display: flex; justify-content: space-around; background: #fff; border-top: 1px solid var(--border); padding: 10px 0; z-index: 100; }
+.bottom-nav button { background: none; border: none; display: flex; flex-direction: column; align-items: center; font-size: 20px; color: #94a3b8; cursor: pointer; position: relative; flex: 1; padding: 4px; }
+.bottom-nav button span.lbl { font-size: 10px; margin-top: 4px; font-weight: 500; }
+.bottom-nav button.active { color: var(--rider); font-weight: 700; }
+.badge { position: absolute; top: -2px; right: 22%; background: var(--danger); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: bold; border: 2px solid #fff; }
+.hidden { display: none !important; }
+.btn { border: none; border-radius: 10px; padding: 12px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn-primary { background: var(--rider); color: #fff; }
+.btn-dark { background: var(--primary); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-outline { background: #f1f5f9; color: var(--text); border: 1px solid var(--border); }
+.btn-block { width: 100%; }
+.order-card { border-left: 4px solid var(--rider); }
+.order-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+.order-row span:first-child { color: var(--text-light); }
+.order-row span:last-child { font-weight: 600; color: var(--text); }
+.earn-badge { background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+.status-chip { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: #dcfce7; color: #166534; font-weight: 600; }
+#riderMap { width: 100%; height: 300px; border-radius: 16px; margin-bottom: 16px; border: 1px solid var(--border); }
+.toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: var(--primary); color: #fff; padding: 12px 24px; border-radius: 30px; font-size: 13px; z-index: 9999; opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); max-width: 90%; text-align: center; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(-10px); }
+.empty { text-align: center; color: var(--text-light); padding: 60px 0; font-size: 14px; }
+.empty .big { font-size: 56px; display: block; margin-bottom: 16px; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: #fff; width: 100%; max-width: 480px; border-radius: 24px 24px 0 0; padding: 24px; max-height: 90vh; overflow-y: auto; }
+.sheet h3 { margin-bottom: 16px; font-size: 20px; }
+.sheet input { width: 100%; padding: 14px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; font-size: 14px; outline: none; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.stat-box { background: #fff; padding: 16px; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; }
+.stat-box .num { font-size: 22px; font-weight: 700; color: var(--rider); }
+.stat-box .lbl { font-size: 11px; color: var(--text-light); text-transform: uppercase; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="splash"><h1>SYEDGO</h1><p>Rider Partner</p><div class="loader"></div></div>
+<div class="app">
+  <header class="topbar"><h1>🛵 SYEDGO Rider</h1><div class="status" id="statusBadge">Offline</div></header>
+  <main id="app"></main>
+  <nav class="bottom-nav">
+    <button data-tab="home" class="active">🏠<span class="lbl">Home</span></button>
+    <button data-tab="orders">📦<span class="lbl">Orders</span><span id="orderBadge" class="badge hidden">0</span></button>
+    <button data-tab="earnings">💰<span class="lbl">Earnings</span></button>
+    <button data-tab="profile">👤<span class="lbl">Profile</span></button>
+  </nav>
+</div>
+<div id="toast" class="toast"></div>
+<div id="modalRoot"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+  import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+  const firebaseConfig = { apiKey: "AIzaSyDGykbkZ4ITxkEgcxaQNZlH9rFO86c-xEU", authDomain: "syedgo-2027.firebaseapp.com", projectId: "syedgo-2027", storageBucket: "syedgo-2027.firebasestorage.app", messagingSenderId: "827702342584", appId: "1:827702342584:web:a3d717e8b1bcf93529954d", measurementId: "G-L0B1K6N1EY" };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  let state = {
+    tab: "home",
+    rider: JSON.parse(localStorage.getItem("syedgo_rider")) || null,
+    isOnline: localStorage.getItem("syedgo_rider_online") === "true",
+    availableOrders: [],
+    activeOrder: JSON.parse(localStorage.getItem("syedgo_rider_active")) || null,
+    completedOrders: JSON.parse(localStorage.getItem("syedgo_rider_completed")) || [],
+    watchId: null, myMap: null, myMarker: null, ordersListener: null
+  };
+
+  function saveLocal() {
+    localStorage.setItem("syedgo_rider", JSON.stringify(state.rider));
+    localStorage.setItem("syedgo_rider_online", state.isOnline);
+    localStorage.setItem("syedgo_rider_active", JSON.stringify(state.activeOrder));
+    localStorage.setItem("syedgo_rider_completed", JSON.stringify(state.completedOrders));
+  }
+  function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(window._t); window._t = setTimeout(() => t.classList.remove("show"), 2000); }
+  function closeModal() { document.getElementById("modalRoot").innerHTML = ""; }
+
+  function startLocationBroadcast(orderId) {
+    if (!navigator.geolocation) return toast("GPS not supported");
+    state.watchId = navigator.geolocation.watchPosition(
+      async (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        try { await setDoc(doc(db, "rider_locations", orderId), { location: { latitude, longitude }, accuracy, riderId: state.rider.phone, riderName: state.rider.name, orderId, updatedAt: serverTimestamp() }, { merge: true }); } catch (e) { console.error(e); }
+        if (state.myMap && state.myMarker) { const pos = { lat: latitude, lng: longitude }; state.myMarker.setPosition(pos); state.myMap.panTo(pos); }
+      },
+      (err) => { console.error(err); toast(err.code === 1 ? "GPS permission denied" : "GPS error"); },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }
+
+  function stopLocationBroadcast() {
+    if (state.watchId !== null) { navigator.geolocation.clearWatch(state.watchId); state.watchId = null; }
+  }
+
+  function toggleOnline() {
+    state.isOnline = !state.isOnline; saveLocal(); updateStatusBadge();
+    if (state.isOnline) { toast("You are now Online 🟢"); loadAvailableOrders(); }
+    else {
+      toast("You are now Offline 🔴");
+      if (state.watchId && !state.activeOrder) stopLocationBroadcast();
+      if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; }
+      state.availableOrders = [];
+    }
+    render();
+  }
+
+  function updateStatusBadge() {
+    const badge = document.getElementById("statusBadge");
+    badge.textContent = state.isOnline ? "Online" : "Offline";
+    badge.classList.toggle("online", state.isOnline);
+  }
+
+  function loadAvailableOrders() {
+    if (state.ordersListener) return;
+    // ONLY show orders that merchant has marked "Ready for Pickup"
+    const ordersQuery = query(collection(db, "orders"), where("status", "==", "Ready for Pickup"));
+
+    state.ordersListener = onSnapshot(ordersQuery, (snapshot) => {
+      const newOrders = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (state.activeOrder && data.id === state.activeOrder.id) return;
+        newOrders.push({ id: doc.id, ...data });
+      });
+      const prevCount = state.availableOrders.length;
+      state.availableOrders = newOrders;
+      if (newOrders.length > prevCount && prevCount > 0 && state.rider) {
+        const diff = newOrders.length - prevCount;
+        toast(`🔔 ${diff} new order${diff > 1 ? 's' : ''} ready for pickup!`);
+      }
+      console.log("📦 Ready orders:", state.availableOrders.length);
+      updateOrderBadge();
+      if (state.tab === "orders" || state.tab === "home") render();
+    }, (err) => { console.warn(err); });
+  }
+
+  function updateOrderBadge() {
+    const badge = document.getElementById("orderBadge");
+    const count = state.availableOrders.length;
+    if (count > 0) { badge.textContent = count; badge.classList.remove("hidden"); } else badge.classList.add("hidden");
+  }
+
+  async function acceptOrder(orderId) {
+    if (!state.rider) return toast("Please login first");
+    if (state.activeOrder) return toast("Complete your current order first");
+    const order = state.availableOrders.find(o => o.id === orderId); if (!order) return;
+    const riderEarning = 120;
+    try {
+      await updateDoc(doc(db, "orders", orderId), {
+        status: "Rider Assigned",
+        rider: { name: state.rider.name, phone: state.rider.phone, bike: state.rider.bike || "Motorcycle", rating: state.rider.rating || 5.0 },
+        riderEarning, assignedAt: new Date().toISOString()
+      });
+      state.activeOrder = { ...order, riderEarning, acceptedAt: new Date().toISOString(), status: "Rider Assigned" };
+      saveLocal(); startLocationBroadcast(orderId);
+      toast("Order accepted! Navigate to store 📍");
+      state.tab = "home"; render();
+    } catch (e) { console.error(e); toast("Failed to accept"); }
+  }
+
+  async function updateOrderStatus(newStatus) {
+    if (!state.activeOrder) return;
+    try {
+      await updateDoc(doc(db, "orders", state.activeOrder.id), { status: newStatus, updatedAt: new Date().toISOString() });
+      state.activeOrder.status = newStatus; saveLocal(); toast("Status: " + newStatus); render();
+    } catch (e) { console.error(e); toast("Failed to update"); }
+  }
+
+  async function completeDelivery() {
+    if (!state.activeOrder) return;
+    if (!confirm("Confirm delivery completed?")) return;
+    try {
+      await updateDoc(doc(db, "orders", state.activeOrder.id), { status: "Delivered", deliveredAt: new Date().toISOString() });
+      state.completedOrders.unshift({ ...state.activeOrder, deliveredAt: new Date().toISOString() });
+      stopLocationBroadcast();
+      state.activeOrder = null; saveLocal();
+      toast("Delivery completed! 🎉 Earned Rs 120");
+      render();
+    } catch (e) { console.error(e); toast("Failed to complete"); }
+  }
+
+  function renderHome() {
+    const active = state.activeOrder;
+    return `
+      <div class="online-toggle">
+        <div><h3>${state.isOnline ? '🟢 You are Online' : '🔴 You are Offline'}</h3><p style="margin-top:4px;">${state.isOnline ? 'Receiving ready orders' : 'Go online to start earning'}</p></div>
+        <div class="toggle-switch ${state.isOnline?'on':''}" onclick="toggleOnline()"></div>
+      </div>
+      ${active ? `
+        <h2>Active Delivery</h2>
+        <div class="card order-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><b>#${active.id}</b><span class="earn-badge">Rs ${active.riderEarning}</span></div>
+          <div class="order-row"><span>Pickup from:</span><span>${active.items[0]?.shopName || 'Store'}</span></div>
+          <div class="order-row"><span>Deliver to:</span><span>${active.address?.details || 'Customer'}</span></div>
+          <div class="order-row"><span>Items:</span><span>${active.items?.length || 0} items</span></div>
+          <div class="order-row"><span>Total:</span><span>Rs ${active.total}</span></div>
+          <div id="riderMap" style="margin-top:12px;"></div>
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+            <button class="btn btn-dark btn-block" onclick="openGoogleMapsNav('${active.address?.details}')">🧭 Navigate</button>
+            ${active.status === 'Rider Assigned' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('Picked Up')">✅ Confirm Pickup</button>` : ''}
+            ${active.status === 'Picked Up' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('On the Way')">🛵 Mark On the Way</button>` : ''}
+            ${active.status === 'On the Way' ? `<button class="btn btn-primary btn-block" onclick="completeDelivery()">🎉 Confirm Delivery</button>` : ''}
+          </div>
+        </div>
+      ` : ''}
+      <h2 style="${active ? 'margin-top:20px;' : ''}">${active ? '🔔 New Orders (' + state.availableOrders.length + ')' : 'Available Orders'}</h2>
+      ${state.availableOrders.length === 0 ? `<div class="empty"><span class="big">📭</span>${state.isOnline ? 'No orders ready yet' : 'Go online to see orders'}</div>` : state.availableOrders.map(o => `
+        <div class="card order-card" style="border-left-color:${active ? '#f59e0b' : '#22c55e'};">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b>#${o.id}</b><span class="earn-badge">Earn Rs 120</span></div>
+          <div class="order-row"><span>Pickup from:</span><span>${o.items?.[0]?.shopName || 'Store'}</span></div>
+          <div class="order-row"><span>Customer:</span><span>${o.address?.details?.slice(0,30) || 'Customer'}</span></div>
+          <div class="order-row"><span>Items:</span><span>${o.items?.length || 0}</span></div>
+          ${active ? `<div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;font-size:12px;margin-top:10px;text-align:center;">⚠️ Finish your current delivery first</div>` : `<button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="acceptOrder('${o.id}')">Accept Order</button>`}
+        </div>
+      `).join("")}`;
+  }
+
+  function renderOrders() {
+    return `<h2>Order History</h2>${state.completedOrders.length === 0 ? '<div class="empty"><span class="big">📦</span>No completed orders yet</div>' : ''}${state.completedOrders.map(o => `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;"><b>#${o.id}</b><span class="status-chip">Delivered</span></div><p style="font-size:12px;margin-top:6px;">${new Date(o.deliveredAt).toLocaleString()}</p><div class="order-row" style="margin-top:8px;"><span>Earned:</span><span style="color:var(--rider);">Rs ${o.riderEarning}</span></div></div>`).join("")}`;
+  }
+
+  function renderEarnings() {
+    const today = new Date().toDateString();
+    const todayEarnings = state.completedOrders.filter(o => new Date(o.deliveredAt).toDateString() === today).reduce((s, o) => s + (o.riderEarning || 0), 0);
+    const weekAgo = new Date(Date.now() - 7*24*60*60*1000);
+    const weekEarnings = state.completedOrders.filter(o => new Date(o.deliveredAt) > weekAgo).reduce((s, o) => s + (o.riderEarning || 0), 0);
+    const totalEarnings = state.completedOrders.reduce((s, o) => s + (o.riderEarning || 0), 0);
+    return `<h2>My Earnings</h2><div class="stat-grid"><div class="stat-box"><div class="num">Rs ${todayEarnings}</div><div class="lbl">Today</div></div><div class="stat-box"><div class="num">Rs ${weekEarnings}</div><div class="lbl">This Week</div></div></div><div class="stat-box" style="margin-bottom:12px;"><div class="num">Rs ${totalEarnings}</div><div class="lbl">Total Lifetime</div></div><div class="card"><div class="order-row"><span>Completed Deliveries</span><span>${state.completedOrders.length}</span></div><div class="order-row"><span>Avg per Delivery</span><span>Rs ${state.completedOrders.length ? Math.round(totalEarnings/state.completedOrders.length) : 0}</span></div></div><button class="btn btn-primary btn-block" onclick="requestPayout()">💸 Request Payout</button>`;
+  }
+
+  function requestPayout() {
+    if (state.completedOrders.length === 0) return toast("No earnings to payout");
+    toast("Payout request sent to Admin ✅");
+  }
+
+  function renderProfile() {
+    if (!state.rider) return `<div class="card" style="text-align:center;padding:40px 20px;"><div style="font-size:64px;margin-bottom:16px;">🛵</div><h3 style="margin-bottom:8px;">SYEDGO Rider</h3><p style="color:var(--text-light);font-size:13px;margin-bottom:20px;">Login to start delivering</p><button class="btn btn-primary btn-block" onclick="openAuth()">Login / Signup</button></div>`;
+    return `<div class="card"><div style="display:flex;align-items:center;gap:16px;"><div style="width:60px;height:60px;border-radius:50%;background:var(--rider);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;">🛵</div><div><h3>${state.rider.name}</h3><p style="font-size:13px;color:var(--text-light);">${state.rider.phone}</p><p style="font-size:12px;color:var(--rider);margin-top:2px;">⭐ ${state.rider.rating || 5.0} • ${state.completedOrders.length} deliveries</p></div></div></div><div class="card"><div class="order-row" style="cursor:pointer;" onclick="editBike()"><span>🏍️ Bike</span><span>${state.rider.bike || 'Not set'} ›</span></div><div class="order-row"><span>📞 Phone</span><span>${state.rider.phone}</span></div><div class="order-row"><span>✅ Status</span><span>${state.isOnline ? 'Online' : 'Offline'}</span></div></div><button class="btn btn-danger btn-block" onclick="logout()">Logout</button>`;
+  }
+
+  function editBike() {
+    const bike = prompt("Enter your bike model:", state.rider.bike || "");
+    if (bike && bike.trim()) { state.rider.bike = bike.trim(); saveLocal(); render(); toast("Bike updated"); }
+  }
+
+  function openAuth() {
+    document.getElementById("modalRoot").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><h3>Rider Login</h3><div id="authStep1"><input id="rPhone" placeholder="Phone number (e.g. 03001234567)" type="tel" /><button class="btn btn-primary btn-block" onclick="checkRider()">Continue</button></div><div id="authStep2" class="hidden"><p style="text-align:center;margin-bottom:16px;">Complete your profile</p><input id="rName" placeholder="Full Name" /><input id="rBike" placeholder="Bike model (e.g. Honda 125)" /><button class="btn btn-primary btn-block" onclick="completeSignup()">Start Riding</button><button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="backToStep1()">← Change Number</button></div><button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="closeModal()">Cancel</button></div></div>`;
+    setTimeout(() => document.getElementById('rPhone')?.focus(), 100);
+  }
+
+  async function checkRider() {
+    const input = document.getElementById('rPhone').value.trim(); if (!input) return toast("Enter phone number");
+    let phone = input.replace(/[\s\-()]/g, "");
+    if (phone.startsWith("0")) phone = "+92" + phone.slice(1);
+    else if (phone.startsWith("92") && !phone.startsWith("+")) phone = "+" + phone;
+    else if (!phone.startsWith("+")) phone = "+92" + phone;
+    window._phone = phone; toast("Checking...");
+    try {
+      const snap = await getDoc(doc(db, "riders", phone));
+      if (snap.exists()) {
+        state.rider = snap.data(); saveLocal(); closeModal(); render();
+        if (state.isOnline) loadAvailableOrders();
+        toast("Welcome back, " + state.rider.name + "! 🛵");
+      } else {
+        document.getElementById('authStep1').classList.add('hidden');
+        document.getElementById('authStep2').classList.remove('hidden');
+      }
+    } catch (e) { console.error(e); toast("Network error"); }
+  }
+
+  function backToStep1() { document.getElementById('authStep2').classList.add('hidden'); document.getElementById('authStep1').classList.remove('hidden'); }
+
+  async function completeSignup() {
+    const name = document.getElementById('rName').value.trim();
+    const bike = document.getElementById('rBike').value.trim();
+    if (!name || !bike) return toast("Fill all fields");
+    state.rider = { name, phone: window._phone, bike, rating: 5.0, joinedAt: new Date().toISOString() };
+    try { await setDoc(doc(db, "riders", state.rider.phone), state.rider); saveLocal(); closeModal(); render(); toast("Welcome, " + name + "! 🎉"); }
+    catch (e) { console.error(e); toast("Failed to create profile"); }
+  }
+
+  function logout() {
+    if (!confirm("Logout?")) return;
+    stopLocationBroadcast();
+    if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; }
+    state.rider = null; state.isOnline = false; state.activeOrder = null; state.completedOrders = []; state.availableOrders = [];
+    localStorage.clear(); render(); toast("Logged out");
+  }
+
+  function openGoogleMapsNav(address) {
+    if (!address) return toast("No address");
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
+  }
+
+  function render() {
+    const app = document.getElementById("app"); let html = "";
+    if (state.tab === "home") html = renderHome();
+    else if (state.tab === "orders") html = renderOrders();
+    else if (state.tab === "earnings") html = renderEarnings();
+    else if (state.tab === "profile") html = renderProfile();
+    app.innerHTML = html;
+    document.querySelectorAll(".bottom-nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === state.tab));
+    updateStatusBadge(); updateOrderBadge();
+    if (state.tab === "home" && state.activeOrder && document.getElementById("riderMap")) setTimeout(initRiderMap, 100);
+  }
+
+  function initRiderMap() {
+    if (!state.activeOrder) return;
+    const mapEl = document.getElementById("riderMap"); if (!mapEl) return;
+    state.myMap = new google.maps.Map(mapEl, { center: { lat: 34.7716, lng: 72.3600 }, zoom: 15, disableDefaultUI: true, styles: [{ featureType: "poi", stylers: [{ visibility: "off" }] }] });
+    state.myMarker = new google.maps.Marker({ position: { lat: 34.7716, lng: 72.3600 }, map: state.myMap, icon: { url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#22c55e"/><text x="12" y="16" text-anchor="middle" font-size="14">🛵</text></svg>`), scaledSize: new google.maps.Size(40, 40) } });
+    navigator.geolocation.getCurrentPosition((pos) => { const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }; state.myMap.setCenter(loc); state.myMarker.setPosition(loc); }, (err) => { console.warn(err); });
+  }
+
+  document.querySelectorAll(".bottom-nav button").forEach(btn => {
+    btn.addEventListener("click", () => { state.tab = btn.dataset.tab; render(); window.scrollTo(0, 0); });
+  });
+
+  setTimeout(() => { document.getElementById('splash').style.opacity = '0'; setTimeout(() => document.getElementById('splash').remove(), 500); }, 2000);
+  updateStatusBadge(); render();
+  if (state.rider && state.isOnline) loadAvailableOrders();
+  if (state.activeOrder) startLocationBroadcast(state.activeOrder.id);
+
+  window.toggleOnline = toggleOnline; window.acceptOrder = acceptOrder;
+  window.updateOrderStatus = updateOrderStatus; window.completeDelivery = completeDelivery;
+  window.openGoogleMapsNav = openGoogleMapsNav; window.openAuth = openAuth;
+  window.checkRider = checkRider; window.backToStep1 = backToStep1;
+  window.completeSignup = completeSignup; window.logout = logout;
+  window.editBike = editBike; window.requestPayout = requestPayout; window.closeModal = closeModal;
+</script>
+</body>
+</html>
