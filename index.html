@@ -18,7 +18,7 @@ body { background: var(--bg); display: flex; justify-content: center; min-height
 @keyframes spin { to { transform: rotate(360deg); } }
 .topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: var(--primary); color: #fff; position: sticky; top: 0; z-index: 10; }
 .topbar h1 { font-size: 18px; }
-.topbar .status { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: rgba(255,255,255,0.15); }
+.topbar .status { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: rgba(255,255,255,0.15); cursor: pointer; }
 .topbar .status.online { background: var(--rider); }
 main { padding: 16px; }
 h2 { font-size: 18px; margin-bottom: 12px; color: var(--text); font-weight: 600; }
@@ -34,7 +34,8 @@ p { font-size: 13px; color: var(--text-light); }
 .bottom-nav button { background: none; border: none; display: flex; flex-direction: column; align-items: center; font-size: 20px; color: #94a3b8; cursor: pointer; position: relative; flex: 1; padding: 4px; }
 .bottom-nav button span.lbl { font-size: 10px; margin-top: 4px; font-weight: 500; }
 .bottom-nav button.active { color: var(--rider); font-weight: 700; }
-.badge { position: absolute; top: -2px; right: 22%; background: var(--danger); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: bold; border: 2px solid #fff; }
+.badge { position: absolute; top: -2px; right: 22%; background: var(--danger); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: bold; border: 2px solid #fff; animation: badgePulse 1.5s infinite; }
+@keyframes badgePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
 .hidden { display: none !important; }
 .btn { border: none; border-radius: 10px; padding: 12px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .btn-primary { background: var(--rider); color: #fff; }
@@ -43,6 +44,8 @@ p { font-size: 13px; color: var(--text-light); }
 .btn-outline { background: #f1f5f9; color: var(--text); border: 1px solid var(--border); }
 .btn-block { width: 100%; }
 .order-card { border-left: 4px solid var(--rider); }
+.order-card.new { border-left-color: var(--danger); animation: newPulse 1.5s infinite; }
+@keyframes newPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
 .order-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
 .order-row span:first-child { color: var(--text-light); }
 .order-row span:last-child { font-weight: 600; color: var(--text); }
@@ -61,12 +64,16 @@ p { font-size: 13px; color: var(--text-light); }
 .stat-box { background: #fff; padding: 16px; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; }
 .stat-box .num { font-size: 22px; font-weight: 700; color: var(--rider); }
 .stat-box .lbl { font-size: 11px; color: var(--text-light); text-transform: uppercase; margin-top: 4px; }
+
+/* Global notification banner */
+#notifBanner { position: fixed; top: 62px; left: 50%; transform: translateX(-50%); z-index: 500; background: var(--danger); color: #fff; padding: 12px 20px; border-radius: 14px; box-shadow: 0 6px 20px rgba(239,68,68,0.4); font-size: 13px; font-weight: 600; cursor: pointer; display: none; max-width: 90%; text-align: center; animation: slideDown 0.4s; }
+@keyframes slideDown { from { top: -100px; opacity: 0; } to { top: 62px; opacity: 1; } }
 </style>
 </head>
 <body>
 <div id="splash"><h1>SYEDGO</h1><p>Rider Partner</p><div class="loader"></div></div>
 <div class="app">
-  <header class="topbar"><h1>🛵 SYEDGO Rider</h1><div class="status" id="statusBadge">Offline</div></header>
+  <header class="topbar"><h1>🛵 SYEDGO Rider</h1><div class="status" id="statusBadge" onclick="toggleOnline()">Offline</div></header>
   <main id="app"></main>
   <nav class="bottom-nav">
     <button data-tab="home" class="active">🏠<span class="lbl">Home</span></button>
@@ -75,6 +82,7 @@ p { font-size: 13px; color: var(--text-light); }
     <button data-tab="profile">👤<span class="lbl">Profile</span></button>
   </nav>
 </div>
+<div id="notifBanner" onclick="goToAvailableOrders()"></div>
 <div id="toast" class="toast"></div>
 <div id="modalRoot"></div>
 
@@ -93,7 +101,9 @@ p { font-size: 13px; color: var(--text-light); }
     availableOrders: [],
     activeOrder: JSON.parse(localStorage.getItem("syedgo_rider_active")) || null,
     completedOrders: JSON.parse(localStorage.getItem("syedgo_rider_completed")) || [],
-    watchId: null, myMap: null, myMarker: null, ordersListener: null
+    watchId: null, myMap: null, myMarker: null, ordersListener: null,
+    isFirstOrderLoad: true,  // To avoid toast spam on initial load
+    lastOrderIds: []          // To detect truly new orders
   };
 
   function saveLocal() {
@@ -102,9 +112,59 @@ p { font-size: 13px; color: var(--text-light); }
     localStorage.setItem("syedgo_rider_active", JSON.stringify(state.activeOrder));
     localStorage.setItem("syedgo_rider_completed", JSON.stringify(state.completedOrders));
   }
-  function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(window._t); window._t = setTimeout(() => t.classList.remove("show"), 2000); }
+  function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(window._t); window._t = setTimeout(() => t.classList.remove("show"), 3000); }
   function closeModal() { document.getElementById("modalRoot").innerHTML = ""; }
 
+  /* ---------- NOTIFICATION HELPERS ---------- */
+  function playOrderSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Play two beeps
+      [0, 0.25].forEach(delay => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime + delay);
+        gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + delay + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + 0.15);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.2);
+      });
+    } catch (e) { console.warn("Sound error:", e); }
+  }
+
+  function vibrate() {
+    if (navigator.vibrate) {
+      try { navigator.vibrate([300, 100, 300, 100, 300]); } catch (e) {}
+    }
+  }
+
+  function showNotificationBanner(count) {
+    const banner = document.getElementById("notifBanner");
+    if (!banner) return;
+    if (count > 0 && !state.activeOrder && state.rider) {
+      banner.textContent = `🔔 ${count} order${count > 1 ? 's' : ''} ready for pickup — Tap to view`;
+      banner.style.display = "block";
+    } else {
+      banner.style.display = "none";
+    }
+  }
+
+  function goToAvailableOrders() {
+    state.tab = "home";
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function newOrderAlert(count) {
+    playOrderSound();
+    vibrate();
+    toast(`🔔 ${count} new ready order${count > 1 ? 's' : ''}!`);
+  }
+
+  /* ---------- LOCATION ---------- */
   function startLocationBroadcast(orderId) {
     if (!navigator.geolocation) return toast("GPS not supported");
     state.watchId = navigator.geolocation.watchPosition(
@@ -120,41 +180,100 @@ p { font-size: 13px; color: var(--text-light); }
 
   function stopLocationBroadcast() { if (state.watchId !== null) { navigator.geolocation.clearWatch(state.watchId); state.watchId = null; } }
 
+  /* ---------- ONLINE / OFFLINE ---------- */
   function toggleOnline() {
-    state.isOnline = !state.isOnline; saveLocal(); updateStatusBadge();
-    if (state.isOnline) { toast("Online 🟢"); loadAvailableOrders(); }
-    else { toast("Offline 🔴"); if (state.watchId && !state.activeOrder) stopLocationBroadcast(); if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; } state.availableOrders = []; }
+    if (!state.rider) return openAuth();
+    state.isOnline = !state.isOnline;
+    saveLocal();
+    updateStatusBadge();
+    toast(state.isOnline ? "🟢 You are Online" : "🔴 You are Offline");
     render();
   }
 
-  function updateStatusBadge() { const badge = document.getElementById("statusBadge"); badge.textContent = state.isOnline ? "Online" : "Offline"; badge.classList.toggle("online", state.isOnline); }
-
-  function loadAvailableOrders() {
-    if (state.ordersListener) return;
-    const ordersQuery = query(collection(db, "orders"), where("status", "==", "Ready for Pickup"));
-    state.ordersListener = onSnapshot(ordersQuery, (snapshot) => {
-      const newOrders = [];
-      snapshot.forEach((doc) => { const data = doc.data(); if (state.activeOrder && data.id === state.activeOrder.id) return; newOrders.push({ id: doc.id, ...data }); });
-      const prevCount = state.availableOrders.length;
-      state.availableOrders = newOrders;
-      if (newOrders.length > prevCount && prevCount > 0 && state.rider) { const diff = newOrders.length - prevCount; toast(`🔔 ${diff} new ready order${diff > 1 ? 's' : ''}!`); }
-      updateOrderBadge();
-      if (state.tab === "orders" || state.tab === "home") render();
-    }, (err) => { console.warn(err); });
+  function updateStatusBadge() {
+    const badge = document.getElementById("statusBadge");
+    if (!state.rider) { badge.textContent = "Login"; badge.classList.remove("online"); return; }
+    badge.textContent = state.isOnline ? "🟢 Online" : "🔴 Offline";
+    badge.classList.toggle("online", state.isOnline);
   }
 
-  function updateOrderBadge() { const badge = document.getElementById("orderBadge"); const count = state.availableOrders.length; if (count > 0) { badge.textContent = count; badge.classList.remove("hidden"); } else badge.classList.add("hidden"); }
+  /* ---------- ORDERS LISTENER (Always Running When Logged In) ---------- */
+  function loadAvailableOrders() {
+    if (!state.rider) return;
+    if (state.ordersListener) return; // Already listening
 
+    console.log("🎧 Starting order listener for rider:", state.rider.phone);
+
+    const ordersQuery = query(collection(db, "orders"), where("status", "==", "Ready for Pickup"));
+
+    state.ordersListener = onSnapshot(ordersQuery, (snapshot) => {
+      const newOrders = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (state.activeOrder && data.id === state.activeOrder.id) return;
+        newOrders.push({ id: docSnap.id, ...data });
+      });
+
+      // Detect TRULY new orders by comparing IDs
+      const currentIds = newOrders.map(o => o.id);
+      const addedIds = currentIds.filter(id => !state.lastOrderIds.includes(id));
+
+      const prevCount = state.availableOrders.length;
+      state.availableOrders = newOrders;
+      state.lastOrderIds = currentIds;
+
+      // Alert for new orders (except very first load when app just opened)
+      if (addedIds.length > 0 && !state.isFirstOrderLoad) {
+        console.log("🔔 New orders detected:", addedIds);
+        newOrderAlert(addedIds.length);
+      }
+
+      // Mark first load as complete
+      if (state.isFirstOrderLoad) {
+        state.isFirstOrderLoad = false;
+        console.log(`📦 Initial load: ${newOrders.length} ready orders`);
+        // Show a different toast on first load if there are orders
+        if (newOrders.length > 0) {
+          setTimeout(() => toast(`📦 ${newOrders.length} ready order${newOrders.length > 1 ? 's' : ''} waiting!`), 500);
+        }
+      }
+
+      updateOrderBadge();
+      showNotificationBanner(newOrders.length);
+      if (state.tab === "orders" || state.tab === "home") render();
+    }, (err) => {
+      console.error("Orders listener error:", err);
+    });
+  }
+
+  function updateOrderBadge() {
+    const badge = document.getElementById("orderBadge");
+    const count = state.availableOrders.length;
+    if (count > 0) { badge.textContent = count; badge.classList.remove("hidden"); }
+    else badge.classList.add("hidden");
+  }
+
+  /* ---------- ACTIONS ---------- */
   async function acceptOrder(orderId) {
     if (!state.rider) return toast("Login first");
     if (state.activeOrder) return toast("Finish current order first");
     const order = state.availableOrders.find(o => o.id === orderId); if (!order) return;
+    if (!state.isOnline) {
+      // Auto-go online if not online
+      state.isOnline = true;
+      saveLocal();
+      updateStatusBadge();
+    }
     const riderEarning = 120;
     try {
       await updateDoc(doc(db, "orders", orderId), { status: "Rider Assigned", rider: { name: state.rider.name, phone: state.rider.phone, bike: state.rider.bike || "Motorcycle", rating: state.rider.rating || 5.0 }, riderEarning, assignedAt: new Date().toISOString() });
       state.activeOrder = { ...order, riderEarning, acceptedAt: new Date().toISOString(), status: "Rider Assigned" };
-      saveLocal(); startLocationBroadcast(orderId);
-      toast("Order accepted! 📍"); state.tab = "home"; render();
+      saveLocal();
+      startLocationBroadcast(orderId);
+      showNotificationBanner(0); // Hide banner
+      toast("Order accepted! 📍");
+      state.tab = "home";
+      render();
     } catch (e) { console.error(e); toast("Failed to accept"); }
   }
 
@@ -170,30 +289,68 @@ p { font-size: 13px; color: var(--text-light); }
     try {
       await updateDoc(doc(db, "orders", state.activeOrder.id), { status: "Delivered", deliveredAt: new Date().toISOString() });
       state.completedOrders.unshift({ ...state.activeOrder, deliveredAt: new Date().toISOString() });
-      stopLocationBroadcast(); state.activeOrder = null; saveLocal();
-      toast("Delivered! 🎉 Earned Rs 120"); render();
+      stopLocationBroadcast();
+      state.activeOrder = null;
+      saveLocal();
+      toast("Delivered! 🎉 Earned Rs 120");
+      render();
     } catch (e) { console.error(e); toast("Failed"); }
   }
 
+  /* ---------- RENDER ---------- */
   function renderHome() {
     const active = state.activeOrder;
-    return `<div class="online-toggle"><div><h3>${state.isOnline ? '🟢 Online' : '🔴 Offline'}</h3><p style="margin-top:4px;">${state.isOnline ? 'Receiving ready orders' : 'Go online'}</p></div><div class="toggle-switch ${state.isOnline?'on':''}" onclick="toggleOnline()"></div></div>
-      ${active ? `<h2>Active Delivery</h2><div class="card order-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><b>#${active.id}</b><span class="earn-badge">Rs ${active.riderEarning}</span></div>
-        <div class="order-row"><span>Pickup:</span><span>${active.items[0]?.shopName || 'Store'}</span></div>
-        <div class="order-row"><span>Deliver to:</span><span>${active.address?.details || 'Customer'}</span></div>
-        <div class="order-row"><span>Total:</span><span>Rs ${active.total}</span></div>
-        <div id="riderMap" style="margin-top:12px;"></div>
-        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
-          <button class="btn btn-dark btn-block" onclick="openGoogleMapsNav('${active.address?.details}')">🧭 Navigate</button>
-          ${active.status === 'Rider Assigned' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('Picked Up')">✅ Confirm Pickup</button>` : ''}
-          ${active.status === 'Picked Up' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('On the Way')">🛵 On the Way</button>` : ''}
-          ${active.status === 'On the Way' ? `<button class="btn btn-primary btn-block" onclick="completeDelivery()">🎉 Confirm Delivery</button>` : ''}
-        </div></div>` : ''}
-      <h2 style="${active ? 'margin-top:20px;' : ''}">${active ? '🔔 New Orders (' + state.availableOrders.length + ')' : 'Available Orders'}</h2>
-      ${state.availableOrders.length === 0 ? `<div class="empty"><span class="big">📭</span>${state.isOnline ? 'No ready orders yet' : 'Go online'}</div>` : state.availableOrders.map(o => `<div class="card order-card" style="border-left-color:${active ? '#f59e0b' : '#22c55e'};"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b>#${o.id}</b><span class="earn-badge">Rs 120</span></div><div class="order-row"><span>Pickup:</span><span>${o.items?.[0]?.shopName || 'Store'}</span></div><div class="order-row"><span>Customer:</span><span>${o.address?.details?.slice(0,30) || 'Customer'}</span></div>${active ? `<div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;font-size:12px;margin-top:10px;text-align:center;">⚠️ Finish current first</div>` : `<button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="acceptOrder('${o.id}')">Accept Order</button>`}</div>`).join("")}`;
+    return `
+      <div class="online-toggle">
+        <div>
+          <h3>${state.isOnline ? '🟢 You are Online' : '🔴 You are Offline'}</h3>
+          <p style="margin-top:4px;">${state.isOnline ? 'Ready to accept orders' : 'Toggle to accept orders'}</p>
+        </div>
+        <div class="toggle-switch ${state.isOnline?'on':''}" onclick="toggleOnline()"></div>
+      </div>
+      ${active ? `
+        <h2>Active Delivery</h2>
+        <div class="card order-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><b>#${active.id}</b><span class="earn-badge">Rs ${active.riderEarning}</span></div>
+          <div class="order-row"><span>Pickup from:</span><span>${active.items[0]?.shopName || 'Store'}</span></div>
+          <div class="order-row"><span>Deliver to:</span><span>${active.address?.details || 'Customer'}</span></div>
+          <div class="order-row"><span>Total:</span><span>Rs ${active.total}</span></div>
+          <div id="riderMap" style="margin-top:12px;"></div>
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+            <button class="btn btn-dark btn-block" onclick="openGoogleMapsNav('${active.address?.details}')">🧭 Navigate</button>
+            ${active.status === 'Rider Assigned' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('Picked Up')">✅ Confirm Pickup</button>` : ''}
+            ${active.status === 'Picked Up' ? `<button class="btn btn-primary btn-block" onclick="updateOrderStatus('On the Way')">🛵 On the Way</button>` : ''}
+            ${active.status === 'On the Way' ? `<button class="btn btn-primary btn-block" onclick="completeDelivery()">🎉 Confirm Delivery</button>` : ''}
+          </div>
+        </div>
+      ` : ''}
+      <h2 style="${active ? 'margin-top:20px;' : ''}">
+        ${active ? '🔔 New Orders (' + state.availableOrders.length + ')' : 'Available Orders' + (state.availableOrders.length > 0 ? ' (' + state.availableOrders.length + ')' : '')}
+      </h2>
+      ${state.availableOrders.length === 0 ? `
+        <div class="empty"><span class="big">📭</span>No ready orders yet<br><span style="font-size:12px;">You'll be notified when a store marks an order ready</span></div>
+      ` : state.availableOrders.map(o => `
+        <div class="card order-card new" style="border-left-color:${active ? '#f59e0b' : '#ef4444'};">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <b>#${o.id}</b>
+            <span class="earn-badge">Rs 120</span>
+          </div>
+          <div class="order-row"><span>Pickup from:</span><span>${o.items?.[0]?.shopName || 'Store'}</span></div>
+          <div class="order-row"><span>Customer:</span><span>${o.address?.details?.slice(0,30) || 'Customer'}</span></div>
+          <div class="order-row"><span>Items:</span><span>${o.items?.length || 0}</span></div>
+          ${active ? `<div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;font-size:12px;margin-top:10px;text-align:center;">⚠️ Finish current delivery first</div>` : `<button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="acceptOrder('${o.id}')">Accept Order</button>`}
+        </div>
+      `).join("")}
+    `;
   }
 
-  function renderOrders() { return `<h2>History</h2>${state.completedOrders.length === 0 ? '<div class="empty"><span class="big">📦</span>No completed orders</div>' : ''}${state.completedOrders.map(o => `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;"><b>#${o.id}</b><span class="status-chip">Delivered</span></div><p style="font-size:12px;margin-top:6px;">${new Date(o.deliveredAt).toLocaleString()}</p><div class="order-row" style="margin-top:8px;"><span>Earned:</span><span style="color:var(--rider);">Rs ${o.riderEarning}</span></div></div>`).join("")}`; }
+  function renderOrders() {
+    return `
+      <h2>Order History</h2>
+      ${state.completedOrders.length === 0 ? '<div class="empty"><span class="big">📦</span>No completed orders</div>' : ''}
+      ${state.completedOrders.map(o => `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;"><b>#${o.id}</b><span class="status-chip">Delivered</span></div><p style="font-size:12px;margin-top:6px;">${new Date(o.deliveredAt).toLocaleString()}</p><div class="order-row" style="margin-top:8px;"><span>Earned:</span><span style="color:var(--rider);">Rs ${o.riderEarning}</span></div></div>`).join("")}
+    `;
+  }
 
   function renderEarnings() {
     const today = new Date().toDateString();
@@ -207,7 +364,7 @@ p { font-size: 13px; color: var(--text-light); }
   function requestPayout() { if (state.completedOrders.length === 0) return toast("No earnings"); toast("Payout request sent ✅"); }
 
   function renderProfile() {
-    if (!state.rider) return `<div class="card" style="text-align:center;padding:40px 20px;"><div style="font-size:64px;margin-bottom:16px;">🛵</div><h3 style="margin-bottom:8px;">SYEDGO Rider</h3><button class="btn btn-primary btn-block" onclick="openAuth()">Login</button></div>`;
+    if (!state.rider) return `<div class="card" style="text-align:center;padding:40px 20px;"><div style="font-size:64px;margin-bottom:16px;">🛵</div><h3 style="margin-bottom:8px;">SYEDGO Rider</h3><p style="color:var(--text-light);font-size:13px;margin-bottom:20px;">Login to start delivering</p><button class="btn btn-primary btn-block" onclick="openAuth()">Login / Signup</button></div>`;
     return `<div class="card"><div style="display:flex;align-items:center;gap:16px;"><div style="width:60px;height:60px;border-radius:50%;background:var(--rider);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;">🛵</div><div><h3>${state.rider.name}</h3><p style="font-size:13px;color:var(--text-light);">${state.rider.phone}</p><p style="font-size:12px;color:var(--rider);margin-top:2px;">⭐ ${state.rider.rating || 5.0} • ${state.completedOrders.length} deliveries</p></div></div></div><div class="card"><div class="order-row" style="cursor:pointer;" onclick="editBike()"><span>🏍️ Bike</span><span>${state.rider.bike || 'Not set'} ›</span></div><div class="order-row"><span>📞 Phone</span><span>${state.rider.phone}</span></div></div><button class="btn btn-danger btn-block" onclick="logout()">Logout</button>`;
   }
 
@@ -222,28 +379,73 @@ p { font-size: 13px; color: var(--text-light); }
     window._phone = phone; toast("Checking...");
     try {
       const snap = await getDoc(doc(db, "riders", phone));
-      if (snap.exists()) { state.rider = snap.data(); saveLocal(); closeModal(); render(); if (state.isOnline) loadAvailableOrders(); toast("Welcome back, " + state.rider.name + "! 🛵"); }
-      else { document.getElementById('authStep1').classList.add('hidden'); document.getElementById('authStep2').classList.remove('hidden'); }
+      if (snap.exists()) {
+        state.rider = snap.data();
+        saveLocal();
+        closeModal();
+        // START LISTENING IMMEDIATELY when logged in
+        state.isFirstOrderLoad = true;
+        state.lastOrderIds = [];
+        loadAvailableOrders();
+        render();
+        toast("Welcome back, " + state.rider.name + "! 🛵");
+      } else {
+        document.getElementById('authStep1').classList.add('hidden');
+        document.getElementById('authStep2').classList.remove('hidden');
+      }
     } catch (e) { console.error(e); toast("Network error"); }
   }
 
   function backToStep1() { document.getElementById('authStep2').classList.add('hidden'); document.getElementById('authStep1').classList.remove('hidden'); }
 
-  async function completeSignup() { const name = document.getElementById('rName').value.trim(); const bike = document.getElementById('rBike').value.trim(); if (!name || !bike) return toast("Fill all"); state.rider = { name, phone: window._phone, bike, rating: 5.0, joinedAt: new Date().toISOString() }; try { await setDoc(doc(db, "riders", state.rider.phone), state.rider); saveLocal(); closeModal(); render(); toast("Welcome, " + name + "! 🎉"); } catch (e) { console.error(e); toast("Failed"); } }
+  async function completeSignup() {
+    const name = document.getElementById('rName').value.trim();
+    const bike = document.getElementById('rBike').value.trim();
+    if (!name || !bike) return toast("Fill all");
+    state.rider = { name, phone: window._phone, bike, rating: 5.0, joinedAt: new Date().toISOString() };
+    try {
+      await setDoc(doc(db, "riders", state.rider.phone), state.rider);
+      saveLocal();
+      closeModal();
+      state.isFirstOrderLoad = true;
+      state.lastOrderIds = [];
+      loadAvailableOrders();
+      render();
+      toast("Welcome, " + name + "! 🎉");
+    } catch (e) { console.error(e); toast("Failed"); }
+  }
 
-  function logout() { if (!confirm("Logout?")) return; stopLocationBroadcast(); if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; } state.rider = null; state.isOnline = false; state.activeOrder = null; state.completedOrders = []; state.availableOrders = []; localStorage.clear(); render(); toast("Logged out"); }
+  function logout() {
+    if (!confirm("Logout?")) return;
+    stopLocationBroadcast();
+    if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; }
+    document.getElementById("notifBanner").style.display = "none";
+    state.rider = null;
+    state.isOnline = false;
+    state.activeOrder = null;
+    state.completedOrders = [];
+    state.availableOrders = [];
+    state.lastOrderIds = [];
+    state.isFirstOrderLoad = true;
+    localStorage.clear();
+    render();
+    toast("Logged out");
+  }
 
   function openGoogleMapsNav(address) { if (!address) return toast("No address"); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank"); }
 
   function render() {
-    const app = document.getElementById("app"); let html = "";
+    const app = document.getElementById("app");
+    let html = "";
     if (state.tab === "home") html = renderHome();
     else if (state.tab === "orders") html = renderOrders();
     else if (state.tab === "earnings") html = renderEarnings();
     else if (state.tab === "profile") html = renderProfile();
     app.innerHTML = html;
     document.querySelectorAll(".bottom-nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === state.tab));
-    updateStatusBadge(); updateOrderBadge();
+    updateStatusBadge();
+    updateOrderBadge();
+    showNotificationBanner(state.availableOrders.length);
     if (state.tab === "home" && state.activeOrder && document.getElementById("riderMap")) setTimeout(initRiderMap, 100);
   }
 
@@ -257,12 +459,34 @@ p { font-size: 13px; color: var(--text-light); }
 
   document.querySelectorAll(".bottom-nav button").forEach(btn => { btn.addEventListener("click", () => { state.tab = btn.dataset.tab; render(); window.scrollTo(0, 0); }); });
 
+  /* ---------- INIT ---------- */
   setTimeout(() => { document.getElementById('splash').style.opacity = '0'; setTimeout(() => document.getElementById('splash')?.remove(), 500); }, 2000);
-  updateStatusBadge(); render();
-  if (state.rider && state.isOnline) loadAvailableOrders();
+
+  updateStatusBadge();
+  render();
+
+  // 🔥 ALWAYS start listening if rider is logged in (regardless of online/offline)
+  if (state.rider) {
+    loadAvailableOrders();
+  }
   if (state.activeOrder) startLocationBroadcast(state.activeOrder.id);
 
-  window.toggleOnline = toggleOnline; window.acceptOrder = acceptOrder; window.updateOrderStatus = updateOrderStatus; window.completeDelivery = completeDelivery; window.openGoogleMapsNav = openGoogleMapsNav; window.openAuth = openAuth; window.checkRider = checkRider; window.backToStep1 = backToStep1; window.completeSignup = completeSignup; window.logout = logout; window.editBike = editBike; window.requestPayout = requestPayout; window.closeModal = closeModal; window.toast = toast;
+  // Expose to window
+  window.toggleOnline = toggleOnline;
+  window.acceptOrder = acceptOrder;
+  window.updateOrderStatus = updateOrderStatus;
+  window.completeDelivery = completeDelivery;
+  window.openGoogleMapsNav = openGoogleMapsNav;
+  window.openAuth = openAuth;
+  window.checkRider = checkRider;
+  window.backToStep1 = backToStep1;
+  window.completeSignup = completeSignup;
+  window.logout = logout;
+  window.editBike = editBike;
+  window.requestPayout = requestPayout;
+  window.closeModal = closeModal;
+  window.toast = toast;
+  window.goToAvailableOrders = goToAvailableOrders;
 </script>
 </body>
 </html>
