@@ -114,6 +114,7 @@ p { font-size: 13px; color: var(--text-light); }
 
   // ============================================
   // FCM PUSH NOTIFICATION SETUP
+  // Saves token ONLY to device_tokens collection (clean)
   // ============================================
   async function requestFcmToken() {
     if (!window.FcmBridge) {
@@ -133,14 +134,8 @@ p { font-size: 13px; color: var(--text-light); }
   async function saveFcmTokenToFirestore(token) {
     if (!state.rider) { console.log('FCM: No rider logged in, skip save'); return; }
     try {
-      await setDoc(doc(db, 'riders', state.rider.phone), {
-        fcmToken: token,
-        fcmTokenUpdatedAt: new Date().toISOString(),
-        platform: 'android'
-      }, { merge: true });
-
-      const tokenDocId = state.rider.phone.replace(/[^0-9]/g, '');
-      await setDoc(doc(db, 'device_tokens', 'rider_' + tokenDocId), {
+      const phoneKey = state.rider.phone.replace(/[^0-9]/g, '');
+      await setDoc(doc(db, 'device_tokens', 'rider_' + phoneKey), {
         token: token,
         userType: 'rider',
         userId: state.rider.phone,
@@ -148,23 +143,17 @@ p { font-size: 13px; color: var(--text-light); }
         updatedAt: new Date().toISOString(),
         platform: 'android'
       }, { merge: true });
-
-      console.log('FCM: Token saved to Firestore ✅');
-    } catch (e) { console.error('FCM: Failed to save token:', e); }
+      console.log('FCM: Token saved to Firestore ✅ rider_' + phoneKey);
+    } catch (e) { console.error('FCM: Save failed:', e); }
   }
 
   async function removeFcmToken() {
     if (!state.rider) return;
     try {
-      await setDoc(doc(db, 'riders', state.rider.phone), {
-        fcmToken: null,
-        fcmTokenUpdatedAt: new Date().toISOString()
-      }, { merge: true });
-
-      const tokenDocId = state.rider.phone.replace(/[^0-9]/g, '');
-      await deleteDoc(doc(db, 'device_tokens', 'rider_' + tokenDocId));
+      const phoneKey = state.rider.phone.replace(/[^0-9]/g, '');
+      await deleteDoc(doc(db, 'device_tokens', 'rider_' + phoneKey));
       console.log('FCM: Token removed from Firestore');
-    } catch (e) { console.error('FCM: Failed to remove token:', e); }
+    } catch (e) { console.error('FCM: Remove failed:', e); }
   }
 
   function playOrderSound() {
@@ -327,7 +316,6 @@ p { font-size: 13px; color: var(--text-light); }
         state.isFirstOrderLoad = true; state.lastOrderIds = [];
         loadAvailableOrders(); render();
         toast("Welcome back, " + state.rider.name + "! 🛵");
-        // ⬇️ FCM: register this device for push notifications
         requestFcmToken();
       } else {
         document.getElementById('authStep1').classList.add('hidden');
@@ -349,14 +337,12 @@ p { font-size: 13px; color: var(--text-light); }
       state.isFirstOrderLoad = true; state.lastOrderIds = [];
       loadAvailableOrders(); render();
       toast("Welcome, " + name + "! 🎉");
-      // ⬇️ FCM: register this device for push notifications
       requestFcmToken();
     } catch (e) { console.error(e); toast("Failed"); }
   }
 
   async function logout() {
     if (!confirm("Logout?")) return;
-    // ⬇️ FCM: remove device token before clearing user
     await removeFcmToken();
     stopLocationBroadcast();
     if (state.ordersListener) { state.ordersListener(); state.ordersListener = null; }
@@ -393,7 +379,7 @@ p { font-size: 13px; color: var(--text-light); }
   setTimeout(() => { document.getElementById('splash').style.opacity = '0'; setTimeout(() => document.getElementById('splash')?.remove(), 500); }, 2000);
   updateStatusBadge(); render();
   if (state.rider) loadAvailableOrders();
-  if (state.rider) requestFcmToken();   // ⬅️ FCM: register token on app launch if logged in
+  if (state.rider) requestFcmToken();
   if (state.activeOrder) startLocationBroadcast(state.activeOrder.id);
 
   window.toggleOnline = toggleOnline; window.acceptOrder = acceptOrder; window.updateOrderStatus = updateOrderStatus; window.completeDelivery = completeDelivery; window.openGoogleMapsNav = openGoogleMapsNav; window.openAuth = openAuth; window.checkRider = checkRider; window.backToStep1 = backToStep1; window.completeSignup = completeSignup; window.logout = logout; window.editBike = editBike; window.requestPayout = requestPayout; window.closeModal = closeModal; window.toast = toast; window.goToAvailableOrders = goToAvailableOrders;
